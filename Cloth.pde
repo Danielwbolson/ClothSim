@@ -1,58 +1,59 @@
 
 import peasy.PeasyCam;
 
-PeasyCam cam;
+PeasyCam camera;
 
-int columns = 30;
 int rows = 30;
+int columns = 30;
 
 int radius = 2;
-float gravity = 50;
+float gravity = 0.05;
+PVector[][] pos = new PVector[columns][rows];
+PVector[][] vel = new PVector[columns][rows];
+PVector spherePos = new PVector(130, 125, 30);
 
-PVector[][] pos = new PVector[rows][columns];
-PVector[][] vel = new PVector[rows][columns];
-PVector[][] force = new PVector[rows][columns];
+float elapsedTime;
+float startTime;
 
-double elapsedTime;
-double startTime;
+float restLength = 2;
+float mass = 0.5;
+float tension = 0.91;
 
-float restLength = 20;
-float mass = 1;
-float tension = 0.94;
+float k = 2000;
+float kv = 150;
 
-float k = 1000;
-float kv = 300;
+float sphereRadius = 10;
 
 void setup() {
   size(1000, 800, P3D);
   
-  cam = new PeasyCam(this, 400);
+  camera = new PeasyCam(this, 120, 120, (width/48.0) / tan (PI*30.0 / 180.0), 100);
+  camera.setSuppressRollRotationMode();
   
   pos[0][0] = new PVector(100, 100, 0);  // first node
   vel[0][0] = new PVector(0, 0, 0);
-  force[0][0] = new PVector(0, 0, 0);
   
-  for(int i = 1; i < rows; i++) {  // top row
+  for(int i = 1; i < columns; i++) {  // top row
     pos[i][0] = new PVector(100, 100, pos[i-1][0].z + restLength);
     vel[i][0] = new PVector(0, 0, 0);
-    force[i][0] = new PVector(0, 0, 0);
   }
   
-  for(int i = 0; i < rows; i++) {  // rest of nodes
-    for(int j = 1; j < columns; j++) {
+  for(int i = 0; i < columns; i++) {  // rest of nodes
+    for(int j = 1; j < rows; j++) {
       pos[i][j] = new PVector(pos[i][j-1].x + restLength, pos[i][j-1].y, pos[i][j-1].z);
       vel[i][j] = new PVector(0, 0, 0);
-      force[i][j] = new PVector(0, 0, 0);
     }
   }
-  fill(0);
+  sphereDetail(20);
   startTime = millis();
 }
 
 void draw() {
   background(255);
+  println(frameRate);
   TimeStep();
   Update(elapsedTime/10000.0);  // purposely dividing by 10k instead of 1k
+  CheckColWithSphere();
   Render();
 }
 
@@ -61,72 +62,143 @@ void TimeStep() {
   startTime = millis();
 }
 
-void Update(double dt) {
+void Update(float dt) {
   for(int t = 0; t < 10; t++) {  // run our update 10 times with smaller timesteps
     
-    for(int i = 0; i < rows; i++) {  
-      for(int j = 1; j < columns; j++) {  // run through rows, skip top one
-          float dx = (pos[i][j].x - pos[i][j-1].x);
-          float dy = (pos[i][j].y - pos[i][j-1].y);
-          float dz = (pos[i][j].z - pos[i][j-1].z);
-          float stringLen = sqrt(sq(dx) + sq(dy) + sq(dz));
-          float stringF = -k * (stringLen - tension * restLength);
+    //horizontal
+    for(int i = 0; i < columns - 1; i++) {
+      for(int j = 0; j < rows; j++) {  // run through columns, skip top one
+     
+          PVector e = new PVector(pos[i+1][j].x - pos[i][j].x, 
+                                  pos[i+1][j].y - pos[i][j].y, 
+                                  pos[i+1][j].z - pos[i][j].z);
+                                  
+          float stringLen = sqrt(e.dot(e));
+          e = new PVector(e.x / stringLen, e.y / stringLen, e.z / stringLen);
           
-          float dirX = dx / stringLen;
-          float dirY = dy / stringLen;
-          float dirZ = dz / stringLen;
+          float v1 = e.dot(vel[i][j]);
+          float v2 = e.dot(vel[i+1][j]);
           
-          float dampFY = -kv * (vel[i][j].y - vel[i][j-1].y);
-          float dampFX = -kv * (vel[i][j].x - vel[i][j-1].x);
-          float dampFZ = -kv * (vel[i][j].z - vel[i][j-1].z);
+          float stringF = -k * (tension * restLength - stringLen);
+          float dampF = -kv * (v1 - v2);
+          float force = stringF + dampF;
           
-          force[i][j].x = stringF * dirX + dampFX;
-          force[i][j].y = stringF * dirY + dampFY;
-          force[i][j].z = stringF * dirZ + dampFZ;
+          vel[i][j] = new PVector(vel[i][j].x + force * e.x * dt, 
+                                  vel[i][j].y + force * e.y * dt, 
+                                  vel[i][j].z + force * e.z * dt);;
+          vel[i+1][j] = new PVector(vel[i+1][j].x - force * e.x * dt, 
+                                    vel[i+1][j].y - force * e.y * dt, 
+                                    vel[i+1][j].z - force * e.z * dt);
+      }
+    }
+    //vertical
+    for(int i = 0; i < columns; i++) {
+      for(int j = 0; j < rows - 1; j++) {
+     
+          PVector e = new PVector(pos[i][j+1].x - pos[i][j].x, 
+                                  pos[i][j+1].y - pos[i][j].y, 
+                                  pos[i][j+1].z - pos[i][j].z);
+                                  
+          float stringLen = sqrt(sq(e.x) + sq(e.y) + sq(e.z));
+          e = new PVector(e.x / stringLen, e.y / stringLen, e.z / stringLen);
           
-          float accY;
-          float accX;
-          float accZ;
+          float v1 = e.dot(vel[i][j]);
+          float v2 = e.dot(vel[i][j+1]);
           
-          if(i+1 < rows) {
-            accX = 0.5 * force[i][j].x / mass - 0.5 * force[i+1][j].x / mass;
-          } else {
-            accX = force[i][j].x / mass;
-          }
+          float stringF = -k * (tension * restLength - stringLen);
+          float dampF = -kv * (v1 - v2);
+          float force = stringF + dampF;
           
-          if(j+1 < columns) {
-            accY = gravity + 0.5 * force[i][j].y / mass - 0.5 * force[i][j+1].y / mass;
-          } else {
-            accY = gravity + force[i][j].y / mass;
-          }
-          
-          accZ = force[i][j].z / mass;
-        
-          vel[i][j].x += accX * dt;
-          vel[i][j].y += accY * dt;
-          vel[i][j].z += accZ * dt;
-          
-          pos[i][j].x += vel[i][j].x * dt;
-          pos[i][j].y += vel[i][j].y * dt;
-          pos[i][j].z += vel[i][j].z * dt;
+          vel[i][j] = new PVector(vel[i][j].x + force * e.x * dt, 
+                                  vel[i][j].y + force * e.y * dt, 
+                                  vel[i][j].z + force * e.z * dt);
+          vel[i][j+1] = new PVector(vel[i][j+1].x - force * e.x * dt, 
+                                    vel[i][j+1].y - force * e.y * dt, 
+                                    vel[i][j+1].z - force * e.z * dt);  
+      }
+    }
+    //gravity
+    for(int i = 0; i < columns; i++) {
+      for(int j = 0; j < rows; j++) {
+        vel[i][j] = new PVector(vel[i][j].x, vel[i][j].y + gravity, vel[i][j].z);
+      }
+    }
+    //fix top row
+  //  for(int i = 0; i < columns; i++) {
+    //  pos[i][0].y = 100;
+    //  vel[i][0] = new PVector(0, 0, 0);
+   // }
+    for(int i = 0; i < columns; i++) {
+      for(int j = 0; j < rows; j++) {
+        pos[i][j] = new PVector(pos[i][j].x + vel[i][j].x * dt, 
+                                pos[i][j].y + vel[i][j].y * dt, 
+                                pos[i][j].z + vel[i][j].z * dt);
       }
     }
   }
-  for(int i = 0; i < rows; i++) {
-    pos[i][0].y = 100;
-  }
 }
 
-void Render() {
-  for(int i = 0; i < rows; i++) {  // top row
-    point(pos[i][0].x, pos[i][0].y, pos[i][0].z);
+//check and see if points in cloth collide with sphere
+void CheckColWithSphere() {
+  for(int i = 0; i < columns; i++) {
+    for(int j = 0; j < rows; j++) {
+      float collisionDistance = sphereRadius + 0.1;
+      
+      PVector norm = new PVector(pos[i][j].x - spherePos.x, 
+                                 pos[i][j].y - spherePos.y, 
+                                 pos[i][j].z - spherePos.z); 
+                              
+      float distance = sqrt(sq(norm.x) + sq(norm.y) + sq(norm.z));
+      
+      if(distance < collisionDistance) {        
+        norm = norm.normalize();
+        float dist = collisionDistance - distance;
+        
+        pos[i][j] = new PVector(pos[i][j].x + dist * norm.x,
+                                pos[i][j].y + dist * norm.y,
+                                pos[i][j].z + dist * norm.z);
+                                
+        float reflect = vel[i][j].dot(norm);
+        
+        vel[i][j] = new PVector((vel[i][j].x - 2 * reflect * norm.x) * 0.9,
+                                (vel[i][j].y - 2 * reflect * norm.y) * 0.9,
+                                (vel[i][j].z - 2 * reflect * norm.z) * 0.9);
+      }
+    }
   }
-  for(int i = 0; i < rows; i++) {  // rest of the rows
-    for(int j = 1; j < columns; j++) {
-      strokeWeight(1);
-      line(pos[i][j].x, pos[i][j].y, pos[i][j].z, pos[i][j-1].x, pos[i][j-1].y, pos[i][j-1].z);
-      strokeWeight(4);
-      point(pos[i][j].x, pos[i][j].y, pos[i][j].z);
+            
+}
+
+
+
+void Render() {
+  pushMatrix();
+  fill(255, 0, 0);
+  noStroke();
+  translate(spherePos.x, spherePos.y, spherePos.z);
+  sphere(sphereRadius);
+  popMatrix();
+  stroke(1);
+  
+    strokeWeight(1);
+  //horizontal
+  for(int i = 0; i < columns - 1; i++) {  // rest of the columns
+    for(int j = 0; j < rows; j++) {
+      line(pos[i][j].x, pos[i][j].y, pos[i][j].z, pos[i+1][j].x, pos[i+1][j].y, pos[i+1][j].z);
+    }
+  }
+  //vertical
+  for(int i = 0; i < columns; i++) {  // rest of the columns
+    for(int j = 0; j < rows - 1; j++) {
+      line(pos[i][j].x, pos[i][j].y, pos[i][j].z, pos[i][j+1].x, pos[i][j+1].y, pos[i][j+1].z);
+    }
+  }
+  fill(0, 0, 0);
+  strokeWeight(4);
+  // points
+  for(int i = 0; i < columns; i++) {
+    for(int j = 0; j < rows; j++) {
+     point(pos[i][j].x, pos[i][j].y, pos[i][j].z);
     }
   }
 }
