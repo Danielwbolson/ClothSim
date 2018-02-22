@@ -1,13 +1,13 @@
 
 import peasy.PeasyCam;
 
-PeasyCam cam;
+PeasyCam camera;
 
-int columns = 30;
-int rows = 30;
+int columns = 20;
+int rows = 20;
 
 int radius = 2;
-float gravity = 50;
+float gravity = 100;
 
 PVector[][] pos = new PVector[rows][columns];
 PVector[][] vel = new PVector[rows][columns];
@@ -16,18 +16,20 @@ PVector[][] force = new PVector[rows][columns];
 double elapsedTime;
 double startTime;
 
-float restLength = 20;
+float restLength = 5;
 float mass = 1;
 float tension = 0.94;
 
-float k = 1000;
-float kv = 300;
+float k = 1500;
+float kv = 100;
 
 void setup() {
   size(1000, 800, P3D);
   
-  cam = new PeasyCam(this, 400);
-  
+  float cameraZ = ((width/2.0) / tan(PI*60.0 / 360.0));
+  perspective(PI/3.0, 1, 0.1, cameraZ*10.0);
+
+  camera = new PeasyCam(this, 120, 120, (width/4.0) / tan (PI*30.0 / 180.0), 100);  
   pos[0][0] = new PVector(100, 100, 0);  // first node
   vel[0][0] = new PVector(0, 0, 0);
   force[0][0] = new PVector(0, 0, 0);
