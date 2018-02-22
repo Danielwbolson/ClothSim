@@ -7,7 +7,7 @@ int columns = 20;
 int rows = 20;
 
 int radius = 2;
-float gravity = 100;
+float gravity = 50;
 
 PVector[][] pos = new PVector[rows][columns];
 PVector[][] vel = new PVector[rows][columns];
@@ -20,7 +20,7 @@ float restLength = 5;
 float mass = 1;
 float tension = 0.94;
 
-float k = 1500;
+float k = 1000;
 float kv = 100;
 
 void setup() {
@@ -54,7 +54,7 @@ void setup() {
 void draw() {
   background(255);
   TimeStep();
-  Update(elapsedTime/10000.0);  // purposely dividing by 10k instead of 1k
+  Update(elapsedTime/100000.0);  // purposely dividing by 10k instead of 1k
   Render();
 }
 
