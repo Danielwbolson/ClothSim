@@ -4,14 +4,15 @@ import peasy.PeasyCam;
 PeasyCam camera;
 PImage img;
 
-int rows = 2;
-int columns = 2;
+int rows = 30;
+int columns = 30;
 
 int radius = 2;
-float gravity = 0.05;
+float gravity = 10;
 PVector[][] pos = new PVector[columns][rows];
 PVector[][] vel = new PVector[columns][rows];
-PVector airVel = new PVector(10, 0, 0);
+PVector[][] preSums = new PVector[columns][rows];
+PVector airVel = new PVector(100, 0, 0);
 PVector spherePos = new PVector(127.3, 125, 10);
 
 float elapsedTime;
@@ -19,16 +20,16 @@ float startTime;
 
 float restLength = 2;
 float mass = 10;
-float tension = 1;
+float tension = 0.91;
 
-float k = 20000;
-float kv = 100;
+float k = 10000;
+float kv = 80;
 
 float sphereRadius = 15;
 float sphereFriction = 0.6;
 
 float airDensity = 1.225;
-float dragCoefficient = 10;
+float dragCoefficient = 1.05;
 
 void setup() {
   size(1000, 800, P3D);
@@ -39,16 +40,19 @@ void setup() {
   
   pos[0][0] = new PVector(100, 100, 0);  // first node
   vel[0][0] = new PVector(0, 0, 0);
+  preSums[0][0] = new PVector(0, 0, 0);
   
   for(int i = 1; i < columns; i++) {  // top row
     pos[i][0] = new PVector(100, 100, pos[i-1][0].z + restLength * tension);
     vel[i][0] = new PVector(0, 0, 0);
+    preSums[i][0] = new PVector(0, 0, 0);
   }
   
   for(int i = 0; i < columns; i++) {  // rest of nodes
     for(int j = 1; j < rows; j++) {
       pos[i][j] = new PVector(pos[i][j-1].x + restLength * tension, pos[i][j-1].y, pos[i][j-1].z);
-      vel[i][j] = new PVector(0, 0, 0);  
+      vel[i][j] = new PVector(0, 0, 0);
+      preSums[i][j] = new PVector(0, 0, 0);
     }
   }
   sphereDetail(20);
@@ -58,8 +62,8 @@ void setup() {
 void draw() {
   background(0);
   println(frameRate);
-  TimeStep();
   Update(elapsedTime/10000.0);  // purposely dividing by 10k instead of 1k
+  TimeStep();
   CheckColWithSphere();
   Render();
 }
@@ -71,6 +75,12 @@ void TimeStep() {
 
 void Update(float dt) {
   for(int t = 0; t < 10; t++) {  // run our update 10 times with smaller timesteps
+    //reset preSums
+    for(int i = 0; i < columns; i++) {
+      for(int j = 0; j < rows; j++) {
+        preSums[i][j] = new PVector(0, 0, 0);
+      }
+    }
     
     //horizontal
     for(int i = 0; i < columns - 1; i++) {
@@ -88,14 +98,15 @@ void Update(float dt) {
           
           float stringF = -k * (tension * restLength - stringLen);
           float dampF = -kv * (v1 - v2);
-          float totForce= stringF + dampF;
+          float totForce = stringF + dampF;
           
-          vel[i][j] = new PVector(vel[i][j].x + totForce * e.x * dt, 
-                                    vel[i][j].y + totForce * e.y * dt, 
-                                    vel[i][j].z + totForce * e.z * dt);;
-          vel[i+1][j] = new PVector(vel[i+1][j].x - totForce * e.x * dt, 
-                                      vel[i+1][j].y - totForce * e.y * dt, 
-                                      vel[i+1][j].z - totForce * e.z * dt);
+          preSums[i][j] = new PVector(preSums[i][j].x + totForce * e.x * dt, 
+                                      preSums[i][j].y + totForce * e.y * dt, 
+                                      preSums[i][j].z + totForce * e.z * dt);;
+
+          preSums[i+1][j] = new PVector(preSums[i+1][j].x - totForce * e.x * dt, 
+                                        preSums[i+1][j].y - totForce * e.y * dt, 
+                                        preSums[i+1][j].z - totForce * e.z * dt);
       }
     }
     //vertical
@@ -104,9 +115,9 @@ void Update(float dt) {
      
           PVector e = new PVector(pos[i][j+1].x - pos[i][j].x, 
                                   pos[i][j+1].y - pos[i][j].y, 
-                                  pos[i][j+1].z - pos[i][j].z);
-                                  
-          float stringLen = sqrt(sq(e.x) + sq(e.y) + sq(e.z));
+                                  pos[i][j+1].z - pos[i][j].z);  
+
+          float stringLen = sqrt(e.dot(e));
           e = new PVector(e.x / stringLen, e.y / stringLen, e.z / stringLen);
           
           float v1 = e.dot(vel[i][j]);
@@ -114,14 +125,15 @@ void Update(float dt) {
           
           float stringF = -k * (tension * restLength - stringLen);
           float dampF = -kv * (v1 - v2);
-          float totForce= stringF + dampF;
+          float totForce = stringF + dampF;
           
-          vel[i][j] = new PVector(vel[i][j].x + totForce* e.x * dt, 
-                                    vel[i][j].y + totForce* e.y * dt, 
-                                    vel[i][j].z + totForce* e.z * dt);
-          vel[i][j+1] = new PVector(vel[i][j+1].x - totForce* e.x * dt, 
-                                      vel[i][j+1].y - totForce* e.y * dt, 
-                                      vel[i][j+1].z - totForce* e.z * dt);  
+          preSums[i][j] = new PVector(preSums[i][j].x + totForce * e.x * dt, 
+                                      preSums[i][j].y + totForce * e.y * dt, 
+                                      preSums[i][j].z + totForce * e.z * dt);
+
+          preSums[i][j+1] = new PVector(preSums[i][j+1].x - totForce * e.x * dt, 
+                                        preSums[i][j+1].y - totForce * e.y * dt, 
+                                        preSums[i][j+1].z - totForce * e.z * dt);  
       }
     }
     //diag to the right
@@ -142,12 +154,13 @@ void Update(float dt) {
           float dampF = -kv * (v1 - v2);
           float totForce= stringF + dampF;
           
-          vel[i][j] = new PVector(vel[i][j].x + totForce* e.x * dt, 
-                                  vel[i][j].y + totForce* e.y * dt, 
-                                  vel[i][j].z + totForce* e.z * dt);
-          vel[i+2][j+2] = new PVector(vel[i+2][j+2].x - totForce* e.x * dt, 
-                                      vel[i+2][j+2].y - totForce* e.y * dt, 
-                                      vel[i+2][j+2].z - totForce* e.z * dt);  
+          preSums[i][j] = new PVector(preSums[i][j].x + totForce* e.x * dt, 
+                                      preSums[i][j].y + totForce* e.y * dt, 
+                                      preSums[i][j].z + totForce* e.z * dt);
+
+          preSums[i+2][j+2] = new PVector(preSums[i+2][j+2].x - totForce* e.x * dt, 
+                                          preSums[i+2][j+2].y - totForce* e.y * dt, 
+                                          preSums[i+2][j+2].z - totForce* e.z * dt);  
       }
     }
     //diag to the left
@@ -168,18 +181,14 @@ void Update(float dt) {
           float dampF = -kv * (v1 - v2);
           float totForce= stringF + dampF;
           
-          vel[i][j] = new PVector(vel[i][j].x + totForce* e.x * dt, 
-                                  vel[i][j].y + totForce* e.y * dt, 
-                                  vel[i][j].z + totForce* e.z * dt);
-          vel[i-2][j+2] = new PVector(vel[i-2][j+2].x - totForce* e.x * dt, 
-                                    vel[i-2][j+2].y - totForce* e.y * dt, 
-                                    vel[i-2][j+2].z - totForce* e.z * dt);  
+          preSums[i][j] = new PVector(preSums[i][j].x + totForce* e.x * dt, 
+                                      preSums[i][j].y + totForce* e.y * dt, 
+                                      preSums[i][j].z + totForce* e.z * dt);
+
+          preSums[i-2][j+2] = new PVector(preSums[i-2][j+2].x - totForce* e.x * dt, 
+                                          preSums[i-2][j+2].y - totForce* e.y * dt, 
+                                          preSums[i-2][j+2].z - totForce* e.z * dt);  
       }
-    }
-        //fix top row
-    for(int i = 0; i < columns; i++) {
-      pos[i][0].y = 100;
-      vel[i][0] = new PVector(0, 0, 0);
     }
     //drag
     for(int i = 0; i < columns - 1; i++) {
@@ -196,38 +205,33 @@ void Update(float dt) {
                                    pos[i][j+1].y - pos[i][j].y,
                                    pos[i][j+1].z - pos[i][j].z);
         
-        PVector norm = new PVector(down.cross(right).x / down.cross(right).mag(),
-                                   down.cross(right).y / down.cross(right).mag(),
-                                   down.cross(right).z / down.cross(right).mag());
+        PVector norm = down.cross(right);
         
-        float area = (down.cross(right)).mag();
+        PVector terms = new PVector(norm.x * avgVel.mag() * (avgVel.dot(norm)) / (2 * norm.mag()),
+                                    norm.y * avgVel.mag() * (avgVel.dot(norm)) / (2 * norm.mag()),
+                                    norm.z * avgVel.mag() * (avgVel.dot(norm)) / (2 * norm.mag()));
+                                    
+        float multiplyingFactor = -(1/8) * airDensity * dragCoefficient;
         
-        float crossSectionalArea = area * avgVel.dot(norm) / avgVel.mag();
-        
-        float multiplyingFactor = -(1/8) * airDensity * dragCoefficient * sq(avgVel.mag()) * 
-                                crossSectionalArea;
-        PVector forceAero = new PVector(norm.x * multiplyingFactor,
-                                        norm.y * multiplyingFactor,
-                                        norm.z * multiplyingFactor);
+        PVector forceAero = new PVector(terms.x * multiplyingFactor,
+                                        terms.y * multiplyingFactor,
+                                        terms.z * multiplyingFactor);
 
-        vel[i][j] = new PVector(vel[i][j].x + forceAero.x * dt,
-                                vel[i][j].y + forceAero.y * dt,
-                                vel[i][j].z + forceAero.z * dt);
-        vel[i+1][j] = new PVector(vel[i+1][j].x + forceAero.x * dt,
-                                  vel[i+1][j].y + forceAero.y * dt,
-                                  vel[i+1][j].z + forceAero.z * dt);
-        vel[i+1][j+1] = new PVector(vel[i+1][j+1].x + forceAero.x * dt,
-                                    vel[i+1][j+1].y + forceAero.y * dt,
-                                    vel[i+1][j+1].z + forceAero.z * dt);
-        vel[i][j+1] = new PVector(vel[i][j+1].x + forceAero.x * dt,
-                                  vel[i][j+1].y + forceAero.y * dt,
-                                  vel[i][j+1].z + forceAero.z * dt);
-      }
-    }
-    //gravity
-    for(int i = 0; i < columns; i++) {
-      for(int j = 0; j < rows; j++) {
-        vel[i][j] = new PVector(vel[i][j].x, vel[i][j].y + gravity, vel[i][j].z);
+        preSums[i][j] = new PVector(preSums[i][j].x + forceAero.x * dt,
+                                    preSums[i][j].y + forceAero.y * dt,
+                                    preSums[i][j].z + forceAero.z * dt);
+
+        preSums[i+1][j] = new PVector(preSums[i+1][j].x + forceAero.x * dt,
+                                      preSums[i+1][j].y + forceAero.y * dt,
+                                      preSums[i+1][j].z + forceAero.z * dt);
+
+        preSums[i+1][j+1] = new PVector(preSums[i+1][j+1].x + forceAero.x * dt,
+                                        preSums[i+1][j+1].y + forceAero.y * dt,
+                                        preSums[i+1][j+1].z + forceAero.z * dt);
+
+        preSums[i][j+1] = new PVector(preSums[i][j+1].x + forceAero.x * dt,
+                                      preSums[i][j+1].y + forceAero.y * dt,
+                                      preSums[i][j+1].z + forceAero.z * dt);
       }
     }
     //fix top row
@@ -237,9 +241,15 @@ void Update(float dt) {
     }
     for(int i = 0; i < columns; i++) {
       for(int j = 0; j < rows; j++) {
+        vel[i][j] = new PVector(vel[i][j].x + preSums[i][j].x,
+                                vel[i][j].y + preSums[i][j].y + gravity * dt,
+                                vel[i][j].z + preSums[i][j].z);
+                                
         pos[i][j] = new PVector(pos[i][j].x + vel[i][j].x * dt, 
                                 pos[i][j].y + vel[i][j].y * dt, 
                                 pos[i][j].z + vel[i][j].z * dt);
+        //println("t: " + t + " i: " + i + " j: " + j + " " +pos[i][j]);
+        //println("t: " + t + " i: " + i + " j: " + j + " " +vel[i][j]);
       }
     }
   }
