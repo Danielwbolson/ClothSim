@@ -4,13 +4,14 @@ import peasy.PeasyCam;
 PeasyCam camera;
 PImage img;
 
-int rows = 30;
-int columns = 30;
+int rows = 2;
+int columns = 2;
 
 int radius = 2;
 float gravity = 0.05;
 PVector[][] pos = new PVector[columns][rows];
 PVector[][] vel = new PVector[columns][rows];
+PVector airVel = new PVector(10, 0, 0);
 PVector spherePos = new PVector(127.3, 125, 10);
 
 float elapsedTime;
@@ -25,6 +26,9 @@ float kv = 100;
 
 float sphereRadius = 15;
 float sphereFriction = 0.6;
+
+float airDensity = 1.225;
+float dragCoefficient = 10;
 
 void setup() {
   size(1000, 800, P3D);
@@ -170,6 +174,54 @@ void Update(float dt) {
           vel[i-2][j+2] = new PVector(vel[i-2][j+2].x - totForce* e.x * dt, 
                                     vel[i-2][j+2].y - totForce* e.y * dt, 
                                     vel[i-2][j+2].z - totForce* e.z * dt);  
+      }
+    }
+        //fix top row
+    for(int i = 0; i < columns; i++) {
+      pos[i][0].y = 100;
+      vel[i][0] = new PVector(0, 0, 0);
+    }
+    //drag
+    for(int i = 0; i < columns - 1; i++) {
+      for(int j = 0; j < rows - 1; j++) {
+        PVector avgVel = new PVector(
+        (vel[i][j].x + vel[i+1][j].x + vel[i][j+1].x)/3 - airVel.x,
+        (vel[i][j].y + vel[i+1][j].y + vel[i][j+1].y)/3 - airVel.y,
+        (vel[i][j].z + vel[i+1][j].z + vel[i][j+1].z)/3 - airVel.z);
+        
+        PVector right = new PVector(pos[i+1][j].x - pos[i][j].x,
+                                    pos[i+1][j].y - pos[i][j].y,
+                                    pos[i+1][j].z - pos[i][j].z);
+        PVector down = new PVector(pos[i][j+1].x - pos[i][j].x,
+                                   pos[i][j+1].y - pos[i][j].y,
+                                   pos[i][j+1].z - pos[i][j].z);
+        
+        PVector norm = new PVector(down.cross(right).x / down.cross(right).mag(),
+                                   down.cross(right).y / down.cross(right).mag(),
+                                   down.cross(right).z / down.cross(right).mag());
+        
+        float area = (down.cross(right)).mag();
+        
+        float crossSectionalArea = area * avgVel.dot(norm) / avgVel.mag();
+        
+        float multiplyingFactor = -(1/8) * airDensity * dragCoefficient * sq(avgVel.mag()) * 
+                                crossSectionalArea;
+        PVector forceAero = new PVector(norm.x * multiplyingFactor,
+                                        norm.y * multiplyingFactor,
+                                        norm.z * multiplyingFactor);
+
+        vel[i][j] = new PVector(vel[i][j].x + forceAero.x * dt,
+                                vel[i][j].y + forceAero.y * dt,
+                                vel[i][j].z + forceAero.z * dt);
+        vel[i+1][j] = new PVector(vel[i+1][j].x + forceAero.x * dt,
+                                  vel[i+1][j].y + forceAero.y * dt,
+                                  vel[i+1][j].z + forceAero.z * dt);
+        vel[i+1][j+1] = new PVector(vel[i+1][j+1].x + forceAero.x * dt,
+                                    vel[i+1][j+1].y + forceAero.y * dt,
+                                    vel[i+1][j+1].z + forceAero.z * dt);
+        vel[i][j+1] = new PVector(vel[i][j+1].x + forceAero.x * dt,
+                                  vel[i][j+1].y + forceAero.y * dt,
+                                  vel[i][j+1].z + forceAero.z * dt);
       }
     }
     //gravity
