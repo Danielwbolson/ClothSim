@@ -4,40 +4,47 @@ import peasy.PeasyCam;
 PeasyCam camera;
 PImage img;
 
-int rows = 30;
-int columns = 30;
+int rows = 50;
+int columns = 50;
 
-int radius = 2;
-float gravity = 10;
+float gravity = 20;
 PVector[][] pos = new PVector[columns][rows];
 PVector[][] vel = new PVector[columns][rows];
 PVector[][] preSums = new PVector[columns][rows];
-PVector airVel = new PVector(100, 0, 0);
-PVector spherePos = new PVector(127.3, 125, 10);
+PVector airVel = new PVector(15, 0, 0);
+PVector spherePos;
+PVector sphereVel;
+PVector sphereForce;
 
 float elapsedTime;
 float startTime;
 
-float restLength = 2;
+float restLength = 1;
 float mass = 10;
 float tension = 0.91;
 
 float k = 10000;
-float kv = 80;
+float kd = 5000;
+float kv = 40;
 
 float sphereRadius = 15;
-float sphereFriction = 0.6;
+float sphereMass = 200000;
 
 float airDensity = 1.225;
 float dragCoefficient = 1.05;
+
+boolean started = false;
 
 void setup() {
   size(1000, 800, P3D);
   img = loadImage("The_Last_of_Us_Fireflies_Logo.png");
   
-  camera = new PeasyCam(this, 127.3, 125, (width/48.0) / tan (PI*30.0 / 180.0), 100);
-  camera.setSuppressRollRotationMode();
-  
+  camera = new PeasyCam(this, 140, 115, (width/48.0) / tan (PI*30.0 / 180.0), 100);
+  sphereDetail(20);
+  Setup();
+}
+
+void Setup() {
   pos[0][0] = new PVector(100, 100, 0);  // first node
   vel[0][0] = new PVector(0, 0, 0);
   preSums[0][0] = new PVector(0, 0, 0);
@@ -55,15 +62,18 @@ void setup() {
       preSums[i][j] = new PVector(0, 0, 0);
     }
   }
-  sphereDetail(20);
+  spherePos = new PVector(132, 120, 18);
+  sphereVel = new PVector(0, 0, 0);
+  sphereForce = new PVector(0, 0, 0);
   startTime = millis();
 }
 
 void draw() {
-  background(0);
+  background(125);
   println(frameRate);
   Update(elapsedTime/10000.0);  // purposely dividing by 10k instead of 1k
   TimeStep();
+  //ImpactDrag();
   CheckColWithSphere();
   Render();
 }
@@ -150,7 +160,7 @@ void Update(float dt) {
           float v1 = e.dot(vel[i][j]);
           float v2 = e.dot(vel[i+2][j+2]);
           
-          float stringF = -k * (tension * diagRestLength - stringLen);
+          float stringF = -kd * (tension * diagRestLength - stringLen);
           float dampF = -kv * (v1 - v2);
           float totForce= stringF + dampF;
           
@@ -177,7 +187,7 @@ void Update(float dt) {
           float v1 = e.dot(vel[i][j]);
           float v2 = e.dot(vel[i-2][j+2]);
           
-          float stringF = -k * (tension * diagRestLength - stringLen);
+          float stringF = -kd * (tension * diagRestLength - stringLen);
           float dampF = -kv * (v1 - v2);
           float totForce= stringF + dampF;
           
@@ -211,7 +221,7 @@ void Update(float dt) {
                                     norm.y * avgVel.mag() * (avgVel.dot(norm)) / (2 * norm.mag()),
                                     norm.z * avgVel.mag() * (avgVel.dot(norm)) / (2 * norm.mag()));
                                     
-        float multiplyingFactor = -(1/8) * airDensity * dragCoefficient;
+        float multiplyingFactor = -(1.0/8.0) * airDensity * dragCoefficient;
         
         PVector forceAero = new PVector(terms.x * multiplyingFactor,
                                         terms.y * multiplyingFactor,
@@ -234,11 +244,6 @@ void Update(float dt) {
                                       preSums[i][j+1].z + forceAero.z * dt);
       }
     }
-    //fix top row
-    for(int i = 0; i < columns; i++) {
-      pos[i][0].y = 100;
-      vel[i][0] = new PVector(0, 0, 0);
-    }
     for(int i = 0; i < columns; i++) {
       for(int j = 0; j < rows; j++) {
         vel[i][j] = new PVector(vel[i][j].x + preSums[i][j].x,
@@ -248,10 +253,18 @@ void Update(float dt) {
         pos[i][j] = new PVector(pos[i][j].x + vel[i][j].x * dt, 
                                 pos[i][j].y + vel[i][j].y * dt, 
                                 pos[i][j].z + vel[i][j].z * dt);
-        //println("t: " + t + " i: " + i + " j: " + j + " " +pos[i][j]);
-        //println("t: " + t + " i: " + i + " j: " + j + " " +vel[i][j]);
+                                
       }
     }
+    //fix top row
+    for(int i = 0; i < columns; i++) {
+      pos[i][0].y = 100;
+      pos[i][0].x = 100;
+      vel[i][0] = new PVector(0, 0, 0);
+    }
+    spherePos = new PVector(spherePos.x + sphereForce.x * dt,
+                            spherePos.y + sphereForce.y * dt,
+                            spherePos.z + sphereForce.z * dt);
   }
 }
 
@@ -269,28 +282,27 @@ void CheckColWithSphere() {
       
       if(distance < collisionDistance) {        
         norm = norm.normalize();
-        float dist = collisionDistance - distance;
         
+        //updateBall
+        sphereForce = new PVector(sphereForce.x + -norm.x * vel[i][j].x / sphereMass,
+                                  sphereForce.y + -norm.y * vel[i][j].y / sphereMass,
+                                  sphereForce.z + -norm.z * vel[i][j].z / sphereMass);
+        
+        //updateCloth
+        float dist = collisionDistance - distance;
         pos[i][j] = new PVector(pos[i][j].x + dist * norm.x,
                                 pos[i][j].y + dist * norm.y,
                                 pos[i][j].z + dist * norm.z);
-                                
-        float reflect = vel[i][j].dot(norm);
-        
-        vel[i][j] = new PVector((vel[i][j].x - 2 * reflect * norm.x) * sphereFriction,
-                                (vel[i][j].y - 2 * reflect * norm.y) * sphereFriction,
-                                (vel[i][j].z - 2 * reflect * norm.z) * sphereFriction);
       }
     }
   }           
 }
 
-
-
-void Render() {
-  pushMatrix();
-  fill(255, 0, 0);
+void Render() {  
   noStroke();
+  fill(255, 0, 0);
+  
+  pushMatrix();
   translate(spherePos.x, spherePos.y, spherePos.z);
   sphere(sphereRadius);
   popMatrix();
@@ -308,4 +320,16 @@ void Render() {
     }
   }
 }
+
+void mousePressed() {
+  if(mouseButton == LEFT) {
+    Setup();
+  }
+}
+
+void ImpactDrag() {
+    airVel.x = (mouseX - width/2) / 5;
+}
+  
+  
       
